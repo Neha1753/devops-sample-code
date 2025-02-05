@@ -1,41 +1,80 @@
 pipeline {
     agent any
 
+    environment {
+        PYTHON = 'python3'
+        VENV_DIR = "${WORKSPACE}/venv"
+        DEPLOY_DIR = "${WORKSPACE}/python-app-deploy"
+    }
+
     stages {
+        stage('Setup Environment') {
+            steps {
+                echo 'Checking and installing Python if needed...'
+                sh '''
+                if ! command -v python3 &> /dev/null; then
+                    echo "Python3 not found! Please install it before running the pipeline."
+                    exit 1
+                fi
+                '''
+            }
+        }
+
         stage('Build') {
             steps {
                 echo 'Creating virtual environment and installing dependencies...'
+                sh '''
+                ${PYTHON} -m venv ${VENV_DIR}
+                source ${VENV_DIR}/bin/activate
+                pip install --upgrade pip
+                if [ -f requirements.txt ]; then
+                    pip install -r requirements.txt
+                fi
+                deactivate
+                '''
             }
         }
+
         stage('Test') {
             steps {
                 echo 'Running tests...'
-                sh 'python3 -m unittest discover -s .'
+                sh '''
+                source ${VENV_DIR}/bin/activate
+                ${PYTHON} -m unittest discover -s .
+                deactivate
+                '''
             }
         }
+
         stage('Deploy') {
             steps {
                 echo 'Deploying application...'
                 sh '''
-                mkdir -p ${WORKSPACE}/python-app-deploy
-                cp ${WORKSPACE}/app.py ${WORKSPACE}/python-app-deploy/
+                mkdir -p ${DEPLOY_DIR}
+                cp ${WORKSPACE}/app.py ${DEPLOY_DIR}/
                 '''
             }
         }
+
         stage('Run Application') {
             steps {
                 echo 'Running application...'
                 sh '''
-                nohup python3 ${WORKSPACE}/python-app-deploy/app.py > ${WORKSPACE}/python-app-deploy/app.log 2>&1 &
-                echo $! > ${WORKSPACE}/python-app-deploy/app.pid
+                source ${VENV_DIR}/bin/activate
+                nohup ${PYTHON} ${DEPLOY_DIR}/app.py > ${DEPLOY_DIR}/app.log 2>&1 &
+                echo $! > ${DEPLOY_DIR}/app.pid
+                deactivate
                 '''
             }
         }
+
         stage('Test Application') {
             steps {
                 echo 'Testing application...'
                 sh '''
-                python3 ${WORKSPACE}/test_app.py
+                source ${VENV_DIR}/bin/activate
+                ${PYTHON} ${WORKSPACE}/test_app.py
+                deactivate
                 '''
             }
         }
@@ -50,3 +89,4 @@ pipeline {
         }
     }
 }
+
